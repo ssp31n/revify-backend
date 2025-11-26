@@ -1,4 +1,9 @@
 .vscode/
+.env
+data/
+.DS_store
+Thumbs.db
+coverage/
 
 # Logs
 logs
