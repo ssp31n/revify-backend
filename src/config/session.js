@@ -18,7 +18,7 @@ export const sessionConfig = session({
     // [수정됨] 로컬 Docker 환경(http://localhost)에서는 secure가 false여야 함
     // 실제 배포 시 SSL을 적용한다면 true로 해야 하지만,
     // 지금은 Nginx가 80포트(HTTP)를 쓰고 있으므로 false로 강제하거나 조건을 풉니다.
-    secure: false, // 일단 확실한 동작을 위해 false로 변경 (나중에 SSL 적용 시 true로 변경)
+    secure: true, // 일단 확실한 동작을 위해 false로 변경 (나중에 SSL 적용 시 true로 변경)
     httpOnly: true,
     maxAge: 1000 * 60 * 60 * 24 * 7, // 7일
     sameSite: "lax", // CSRF 보호 수준
