@@ -2,29 +2,36 @@ import express from "express";
 import cors from "cors";
 import morgan from "morgan";
 import helmet from "helmet";
+import passport from "passport";
+import { sessionConfig } from "./config/session.js";
+import "./config/passport.js"; // Passport 설정 로드
 import routes from "./routes/index.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 
 const app = express();
 
-// 기본 미들웨어 설정
-app.use(helmet()); // 보안 헤더
-app.use(cors()); // CORS 허용 (추후 배포 시 특정 도메인으로 제한 필요)
-app.use(express.json()); // JSON 파싱
+app.use(helmet());
+app.use(
+  cors({
+    origin: process.env.CLIENT_URL || "http://localhost:5173", // 프론트엔드 URL
+    credentials: true, // 쿠키 전달 허용
+  })
+);
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 로깅 (테스트 환경이 아닐 때만)
 if (process.env.NODE_ENV !== "test") {
   app.use(morgan("dev"));
 }
 
-// 라우트 연결
+// 세션 및 인증 미들웨어 (라우트보다 먼저 선언되어야 함)
+app.use(sessionConfig);
+app.use(passport.initialize());
+app.use(passport.session());
+
 app.use("/", routes);
 
-// 404 처리
 app.use(notFoundHandler);
-
-// 공통 에러 처리
 app.use(errorHandler);
 
 export default app;
