@@ -69,7 +69,7 @@ export const getFileContent = async (req, res, next) => {
     }
 
     // 파일 크기 제한 (예: 1MB)
-    const MAX_SIZE = 1024 * 1024;
+    const MAX_SIZE = 10 * 1024 * 1024; // 10MB
     if (fileEntry.size > MAX_SIZE) {
       return res.status(413).json({
         success: false,
