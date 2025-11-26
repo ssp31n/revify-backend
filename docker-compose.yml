@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  # MongoDB: 사용자 정보 및 메타데이터 저장
+  mongo:
+    image: mongo:6.0
+    container_name: revify-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./data/mongo:/data/db # 로컬 폴더에 데이터 영구 저장
+    networks:
+      - revify-net
+
+  # Redis: 세션 저장소
+  redis:
+    image: redis:7.0
+    container_name: revify-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - revify-net
+
+networks:
+  revify-net:
+    driver: bridge
