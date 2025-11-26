@@ -4,16 +4,15 @@ import app from "../src/app.js";
 import User from "../src/models/User.js";
 import Session from "../src/models/Session.js";
 import redisClient from "../src/config/redis.js";
+import { connectDB } from "../src/config/db.js";
 
 // 테스트 데이터
 let userA, userB;
 let tokenUserA, tokenUserB; // 헤더값 (ID)
 
 beforeAll(async () => {
-  // DB 연결 확인 (이미 app.js에서 연결하지만, 테스트 환경 안정성을 위해)
-  if (mongoose.connection.readyState === 0) {
-    await mongoose.connect(process.env.MONGO_URI);
-  }
+  // [수정됨] mongoose.connect 대신 connectDB() 사용
+  await connectDB();
 
   // 테스트 유저 생성
   await User.deleteMany({});

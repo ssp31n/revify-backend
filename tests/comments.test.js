@@ -5,13 +5,12 @@ import User from "../src/models/User.js";
 import Session from "../src/models/Session.js";
 import Comment from "../src/models/Comment.js";
 import redisClient from "../src/config/redis.js";
+import { connectDB } from "../src/config/db.js";
 
 let owner, commenter, session;
 
 beforeAll(async () => {
-  if (mongoose.connection.readyState === 0) {
-    await mongoose.connect(process.env.MONGO_URI);
-  }
+  await connectDB();
   await User.deleteMany({});
   await Session.deleteMany({});
   await Comment.deleteMany({});

@@ -2,11 +2,15 @@ import request from "supertest";
 import app from "../src/app.js";
 import redisClient from "../src/config/redis.js";
 import mongoose from "mongoose";
+import { connectDB } from "../src/config/db.js";
+
+beforeAll(async () => {
+  await connectDB();
+});
 
 // 테스트 종료 후 리소스 정리
 afterAll(async () => {
   await redisClient.disconnect();
-  // mongoose 연결이 있다면 종료 (현재 단계에서는 mock이 없으면 연결 시도 안할 수 있으나 안전하게)
   if (mongoose.connection.readyState !== 0) {
     await mongoose.disconnect();
   }

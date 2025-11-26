@@ -6,14 +6,14 @@ import app from "../src/app.js";
 import User from "../src/models/User.js";
 import Session from "../src/models/Session.js";
 import redisClient from "../src/config/redis.js";
+import { connectDB } from "../src/config/db.js";
 
 // 테스트용 임시 ZIP 파일 생성 (빈 파일)
 const testZipPath = path.join(process.cwd(), "tests", "sample.zip");
 
 beforeAll(async () => {
-  if (mongoose.connection.readyState === 0) {
-    await mongoose.connect(process.env.MONGO_URI);
-  }
+  // [수정됨]
+  await connectDB();
   await fs.ensureFile(testZipPath); // 테스트용 더미 파일 생성
 });
 
