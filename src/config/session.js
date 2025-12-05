@@ -20,7 +20,7 @@ export const sessionConfig = session({
     httpOnly: true,
     // [핵심 수정] 로컬에서는 'lax', 배포(Cross-site)에서는 'none' 또는 'lax'
     // 보통 lax로 통일해도 되지만, 확실하게 하기 위해 조건부 설정
-    sameSite: isProduction ? "lax" : "lax",
+    sameSite: isProduction ? "none" : "lax",
     maxAge: 1000 * 60 * 60 * 24 * 7, // 7일
   },
 });
