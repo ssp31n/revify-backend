@@ -22,6 +22,20 @@ router.get(
 router.post("/logout", requireAuth, authController.logout);
 
 // GET /auth/me - 내 정보 확인
-router.get("/me", requireAuth, authController.getMe);
+router.get(
+  "/me",
+  (req, res, next) => {
+    // 브라우저가 이 응답을 절대 캐시하지 못하게 설정
+    res.set(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate, proxy-revalidate"
+    );
+    res.set("Pragma", "no-cache");
+    res.set("Expires", "0");
+    next();
+  },
+  requireAuth,
+  authController.getMe
+);
 
 export default router;
