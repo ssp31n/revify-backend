@@ -6,7 +6,7 @@ const sessionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      index: true, // 내 세션 목록 조회 성능 향상
+      index: true,
     },
     title: {
       type: String,
@@ -26,7 +26,7 @@ const sessionSchema = new mongoose.Schema(
     },
     commentPermission: {
       type: String,
-      enum: ["owner", "invited", "everyone"], // 'anyoneWithLink'를 everyone으로 간소화
+      enum: ["owner", "invited", "everyone"],
       default: "everyone",
     },
     status: {
@@ -34,15 +34,26 @@ const sessionSchema = new mongoose.Schema(
       enum: ["created", "uploading", "ready", "error"],
       default: "created",
     },
-    // TTL: 세션 만료 시간 (기본 7일 후)
+    // [추가됨] 초대된 사용자 목록 (Private 세션 접근 가능)
+    invitedUsers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+    // [추가됨] 초대 링크용 토큰 (이 토큰을 가진 링크로 접속하면 invitedUsers에 추가됨)
+    inviteToken: {
+      type: String,
+      select: false, // 기본 조회 시에는 노출되지 않도록 설정 (보안)
+    },
     expiresAt: {
       type: Date,
       default: () => new Date(+new Date() + 7 * 24 * 60 * 60 * 1000),
-      index: { expires: "0s" }, // 이 시간이 되면 자동 삭제
+      index: { expires: "0s" },
     },
   },
   {
-    timestamps: true, // createdAt, updatedAt
+    timestamps: true,
   }
 );
 
