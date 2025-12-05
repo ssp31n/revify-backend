@@ -15,7 +15,18 @@ router.get(
 router.get(
   "/google/callback",
   passport.authenticate("google", { failureRedirect: "/login-failed" }),
-  authController.googleCallback
+  (req, res) => {
+    // 세션을 명시적으로 저장한 뒤 리디렉션
+    req.session.save((err) => {
+      if (err) {
+        console.error("Session save error:", err);
+        return res.redirect("/login-failed");
+      }
+      // 환경변수에서 클라이언트 URL 가져오기 (없으면 기본값)
+      const clientUrl = process.env.CLIENT_URL || "https://revify.my";
+      res.redirect(clientUrl);
+    });
+  }
 );
 
 // POST /auth/logout - 로그아웃
