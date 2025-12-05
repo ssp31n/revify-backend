@@ -13,10 +13,24 @@ const app = express();
 app.set("trust proxy", 1);
 
 app.use(helmet());
+
+const allowedOrigins = [
+  process.env.CLIENT_URL, // 배포 주소 (https://revify.my)
+  "http://localhost:5173", // 로컬 프론트엔드
+  "http://127.0.0.1:5173",
+];
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173", // 프론트엔드 URL
-    credentials: true, // 쿠키 전달 허용
+    origin: function (origin, callback) {
+      // origin이 없으면(서버간 통신 등) 허용, 리스트에 있으면 허용
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true, // 쿠키 전달 허용 필수
   })
 );
 app.use(express.json());

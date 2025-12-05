@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// 환경 변수 체크: 배포 환경이어도 HTTPS가 아니면 secure를 꺼야 함
+// 배포 환경(production)인지 확인
 const isProduction = process.env.NODE_ENV === "production";
 
 export const sessionConfig = session({
@@ -13,14 +13,14 @@ export const sessionConfig = session({
   secret: process.env.SESSION_SECRET || "dev_secret_key",
   resave: false,
   saveUninitialized: false,
-  proxy: true, // [추가됨] 프록시 환경에서 쿠키 설정 허용
+  proxy: true,
   cookie: {
-    // [수정됨] 로컬 Docker 환경(http://localhost)에서는 secure가 false여야 함
-    // 실제 배포 시 SSL을 적용한다면 true로 해야 하지만,
-    // 지금은 Nginx가 80포트(HTTP)를 쓰고 있으므로 false로 강제하거나 조건을 풉니다.
-    secure: true, // 일단 확실한 동작을 위해 false로 변경 (나중에 SSL 적용 시 true로 변경)
+    // [핵심 수정] 프로덕션(HTTPS)일 때만 true, 로컬(HTTP)일 때는 false
+    secure: isProduction,
     httpOnly: true,
+    // [핵심 수정] 로컬에서는 'lax', 배포(Cross-site)에서는 'none' 또는 'lax'
+    // 보통 lax로 통일해도 되지만, 확실하게 하기 위해 조건부 설정
+    sameSite: isProduction ? "lax" : "lax",
     maxAge: 1000 * 60 * 60 * 24 * 7, // 7일
-    sameSite: "lax", // CSRF 보호 수준
   },
 });
