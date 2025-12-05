@@ -29,7 +29,10 @@ export const connectDB = async () => {
       console.log(`🧪 [TEST MODE] Connecting to: ${dbUri}`);
     }
 
-    const conn = await mongoose.connect(dbUri);
+    // [수정] dbName 옵션 추가: URI 파싱 실패를 대비해 DB 이름을 명시적으로 지정
+    const conn = await mongoose.connect(dbUri, {
+      dbName: "revify", // <-- 이 옵션이 있으면 URI 뒤에 뭐가 붙든 무조건 revify DB를 씁니다.
+    });
 
     if (process.env.NODE_ENV !== "test") {
       console.log(`MongoDB Connected: ${conn.connection.host}`);
