@@ -1,5 +1,9 @@
 import { v4 as uuidv4 } from "uuid";
+import fs from "fs-extra"; // [필수] fs-extra 설치 필요 (npm i fs-extra)
+import path from "path";
 import Session from "../models/Session.js";
+import FileEntry from "../models/FileEntry.js";
+import Comment from "../models/Comment.js";
 import { permissionService } from "../services/permissionService.js";
 
 const sendResponse = (res, statusCode, data) => {
@@ -82,19 +86,50 @@ export const getSessionById = async (req, res, next) => {
 
 export const deleteSession = async (req, res, next) => {
   try {
+    // 1. 세션 찾기
     const session = await Session.findById(req.params.id);
     if (!session) {
       const error = new Error("Session not found");
       error.statusCode = 404;
       throw error;
     }
+
+    // 2. 권한 확인
     if (!session.owner.equals(req.user._id)) {
       const error = new Error("Only the owner can delete this session");
       error.statusCode = 403;
       throw error;
     }
+
+    // 3. [중요] 자식 데이터(파일 엔트리, 댓글) 먼저 삭제
+    // 여기서 에러가 나면 세션도 삭제되지 않으므로 데이터 불일치를 막을 수 있습니다.
+    // 주의: FileEntry 스키마에 'sessionId' 필드가 있어야 합니다.
+    await Promise.all([
+      FileEntry.deleteMany({ session: session._id }),
+      Comment.deleteMany({ session: session._id }),
+    ]);
+
+    // 4. 물리적 파일 폴더 삭제 (실패해도 DB 삭제는 진행하도록 try-catch 감싸기 가능)
+    try {
+      const uploadPath = path.join(
+        process.cwd(),
+        "data",
+        "uploads",
+        "sessions",
+        session._id.toString()
+      );
+      await fs.remove(uploadPath); // 폴더가 없어도 에러 안 남
+    } catch (fsError) {
+      console.error("Failed to delete session files:", fsError);
+      // 파일 삭제 실패는 치명적이지 않으므로 계속 진행
+    }
+
+    // 5. 마지막으로 세션 삭제
     await session.deleteOne();
-    sendResponse(res, 200, { message: "Session deleted successfully" });
+
+    sendResponse(res, 200, {
+      message: "Session and all related data deleted successfully",
+    });
   } catch (error) {
     next(error);
   }
@@ -184,12 +219,10 @@ export const joinSession = async (req, res, next) => {
       throw error;
     }
     if (session.invitedUsers.includes(req.user._id)) {
-      return res
-        .status(200)
-        .json({
-          success: true,
-          data: { sessionId: session._id, message: "Already joined" },
-        });
+      return res.status(200).json({
+        success: true,
+        data: { sessionId: session._id, message: "Already joined" },
+      });
     }
     if (session.owner.equals(req.user._id)) {
       return res
@@ -198,15 +231,13 @@ export const joinSession = async (req, res, next) => {
     }
     session.invitedUsers.push(req.user._id);
     await session.save();
-    res
-      .status(200)
-      .json({
-        success: true,
-        data: {
-          sessionId: session._id,
-          message: "Successfully joined session",
-        },
-      });
+    res.status(200).json({
+      success: true,
+      data: {
+        sessionId: session._id,
+        message: "Successfully joined session",
+      },
+    });
   } catch (error) {
     next(error);
   }
