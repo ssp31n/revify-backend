@@ -1,0 +1,23 @@
+name: Deploy Backend to GCP
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.GCP_HOST }}
+          username: ${{ secrets.GCP_USERNAME }}
+          key: ${{ secrets.GCP_SSH_KEY }}
+          port: 22
+          script: |
+            cd ~/revify/back
+            git pull origin main
+            cd ~/revify
+            docker compose up -d --build backend
+            docker image prune -f
