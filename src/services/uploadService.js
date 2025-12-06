@@ -8,12 +8,10 @@ import Session from "../models/Session.js";
 class UploadService extends EventEmitter {
   constructor() {
     super();
-    // 진행 중인 업로드의 상태 저장 (메모리)
-    // 실무에서는 Redis 등을 사용하여 다중 인스턴스 대응 필요
     this.uploadStatus = new Map();
   }
 
-  // 업로드 ID에 대한 이벤트 리스너 등록 헬퍼
+  // ... (subscribe 등 기존 코드와 동일) ...
   subscribe(uploadId, res) {
     const onProgress = (data) => {
       res.write(`event: progress\ndata: ${JSON.stringify(data)}\n\n`);
@@ -33,7 +31,6 @@ class UploadService extends EventEmitter {
     this.on(`done:${uploadId}`, onDone);
     this.on(`error:${uploadId}`, onError);
 
-    // 클라이언트 연결 종료 시 정리
     res.on("close", () => {
       this.cleanupListeners(uploadId, onProgress, onDone, onError);
     });
@@ -45,18 +42,16 @@ class UploadService extends EventEmitter {
     this.removeListener(`error:${uploadId}`, onError);
   }
 
-  // 비동기 파일 처리 시작
   async processUpload(uploadId, sessionId, zipFilePath) {
     try {
+      console.log(`[Start] Upload processing for Session: ${sessionId}`); // 로그 추가
+
       this.emit(`progress:${uploadId}`, {
-        message: "Initializing extraction...",
+        message: "Initializing...",
         percent: 0,
       });
-
-      // 1. 세션 상태 업데이트
       await Session.findByIdAndUpdate(sessionId, { status: "uploading" });
 
-      // 2. 압축 해제 및 인덱싱
       const sessionDir = path.join(
         process.cwd(),
         "data",
@@ -65,40 +60,76 @@ class UploadService extends EventEmitter {
         sessionId.toString()
       );
       await fs.ensureDir(sessionDir);
-
-      // 기존 파일 정리 (덮어쓰기 정책)
-      await FileEntry.deleteMany({ session: sessionId });
       await fs.emptyDir(sessionDir);
+      await FileEntry.deleteMany({ session: sessionId });
 
       const directory = await unzipper.Open.file(zipFilePath);
       const totalFiles = directory.files.length;
       let processedCount = 0;
 
-      for (const file of directory.files) {
-        const relativePath = file.path; // ZIP 내부 경로
-        const fullPath = path.join(sessionDir, relativePath);
+      const fileEntriesBatch = [];
+      const createdDirs = new Set();
 
-        // 보안: 상위 디렉토리 접근(Zip Slip) 방지
+      console.log(`[Info] Total files in zip: ${totalFiles}`); // 로그 추가
+
+      for (const file of directory.files) {
+        // 경로 정규화 (Windows 역슬래시 \ -> /)
+        let relativePath = file.path.replace(/\\/g, "/");
+
+        // 디버깅: 실제 파일 경로가 어떻게 들어오는지 확인
+        console.log(
+          `[File Found] Original: ${file.path} -> Normalized: ${relativePath} (Type: ${file.type})`
+        );
+
+        // 끝에 / 가 있으면 제거
+        if (relativePath.endsWith("/")) {
+          relativePath = relativePath.slice(0, -1);
+        }
+
+        // __MACOSX 등 숨김 폴더/파일 무시
+        if (
+          relativePath.startsWith("__MACOSX") ||
+          relativePath.includes("/.")
+        ) {
+          continue;
+        }
+
+        const fullPath = path.join(sessionDir, relativePath);
         if (!fullPath.startsWith(sessionDir)) continue;
 
+        // 1. 폴더인 경우 (명시적)
         if (file.type === "Directory") {
-          await fs.ensureDir(fullPath);
-          await FileEntry.create({
-            session: sessionId,
-            path: relativePath,
-            name: path.basename(relativePath),
-            isDirectory: true,
-            storageKey: fullPath,
-          });
-        } else {
-          // 파일 저장
-          // unzipper의 extract는 stream 처리가 까다로울 수 있어 buffer나 stream 사용
-          // 여기서는 stream -> pipe 방식을 사용
+          if (!createdDirs.has(relativePath)) {
+            console.log(
+              `[Action] Creating Explicit Directory: ${relativePath}`
+            ); // 로그 추가
+            await fs.ensureDir(fullPath);
+            fileEntriesBatch.push({
+              session: sessionId,
+              path: relativePath,
+              name: path.basename(relativePath),
+              isDirectory: true,
+              storageKey: fullPath,
+            });
+            createdDirs.add(relativePath);
+          }
+        }
+        // 2. 파일인 경우
+        else {
+          // 암시적 부모 폴더 생성
+          this.collectParentDirs(
+            sessionId,
+            relativePath,
+            sessionDir,
+            createdDirs,
+            fileEntriesBatch
+          );
+
           await fs.ensureDir(path.dirname(fullPath));
 
+          // 파일 저장
           const readStream = file.stream();
           const writeStream = fs.createWriteStream(fullPath);
-
           await new Promise((resolve, reject) => {
             readStream
               .pipe(writeStream)
@@ -106,41 +137,73 @@ class UploadService extends EventEmitter {
               .on("error", reject);
           });
 
-          await FileEntry.create({
+          fileEntriesBatch.push({
             session: sessionId,
             path: relativePath,
             name: path.basename(relativePath),
             isDirectory: false,
             size: file.uncompressedSize,
             storageKey: fullPath,
-            // 확장자 추출로 언어 추정 (간단 구현)
             language: path.extname(relativePath).slice(1),
           });
         }
 
         processedCount++;
-        // 진행률 전송 (너무 잦으면 부하가 되므로 10개 단위로 전송 등 최적화 가능)
-        const percent = Math.round((processedCount / totalFiles) * 100);
-        this.emit(`progress:${uploadId}`, {
-          message: `Processing ${relativePath}`,
-          percent,
-        });
+        if (processedCount % 10 === 0 || processedCount === totalFiles) {
+          const percent = Math.round((processedCount / totalFiles) * 100);
+          this.emit(`progress:${uploadId}`, {
+            message: `Processing... (${percent}%)`,
+            percent,
+          });
+        }
       }
 
-      // 3. 완료 처리
-      await Session.findByIdAndUpdate(sessionId, { status: "ready" });
+      // DB 저장
+      if (fileEntriesBatch.length > 0) {
+        console.log(
+          `[DB] Inserting ${fileEntriesBatch.length} entries to DB...`
+        ); // 로그 추가
+        await FileEntry.insertMany(fileEntriesBatch);
+        console.log(`[DB] Insert complete.`); // 로그 추가
+      } else {
+        console.warn(`[Warning] No files were prepared for DB insertion!`);
+      }
 
-      // 임시 ZIP 파일 삭제
+      await Session.findByIdAndUpdate(sessionId, { status: "ready" });
       await fs.remove(zipFilePath);
 
-      this.emit(`done:${uploadId}`, {
-        message: "Upload and processing complete",
-        percent: 100,
-      });
+      this.emit(`done:${uploadId}`, { message: "Complete", percent: 100 });
     } catch (error) {
       console.error("Upload processing error:", error);
       await Session.findByIdAndUpdate(sessionId, { status: "error" });
       this.emit(`error:${uploadId}`, { message: error.message });
+    }
+  }
+
+  collectParentDirs(sessionId, filePath, sessionDir, createdDirs, batchArray) {
+    const parts = filePath.split("/");
+    parts.pop(); // 파일명 제거
+
+    let currentPath = "";
+    for (const part of parts) {
+      currentPath = currentPath ? `${currentPath}/${part}` : part;
+
+      if (!createdDirs.has(currentPath)) {
+        console.log(
+          `[Action] Creating Implicit Directory: ${currentPath} (derived from ${filePath})`
+        ); // 로그 추가
+
+        const fullDirPath = path.join(sessionDir, currentPath);
+
+        batchArray.push({
+          session: sessionId,
+          path: currentPath,
+          name: part,
+          isDirectory: true,
+          storageKey: fullDirPath,
+        });
+        createdDirs.add(currentPath);
+      }
     }
   }
 }
